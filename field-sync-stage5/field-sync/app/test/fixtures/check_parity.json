@@ -1,0 +1,306 @@
+{
+ "_note": "서버 private.missing_checks 결과(PG16에서 생성). 앱 Template.missing 과 같아야 함. 검증: supabase/tests/80_check_parity.sh, app/test/models_test.dart",
+ "items": [
+  {
+   "key": "b_req",
+   "label": "밸브 잠금",
+   "type": "bool",
+   "section": "상수도",
+   "required": true
+  },
+  {
+   "key": "b_opt",
+   "label": "누수 흔적",
+   "type": "bool",
+   "section": "상수도"
+  },
+  {
+   "key": "n_req",
+   "label": "수압",
+   "type": "number",
+   "required": true,
+   "min": 0,
+   "max": 10,
+   "unit": "bar"
+  },
+  {
+   "key": "n_opt",
+   "label": "계량기 지침",
+   "type": "number"
+  },
+  {
+   "key": "n_min",
+   "label": "관경",
+   "type": "number",
+   "min": 1.5
+  },
+  {
+   "key": "s_req",
+   "label": "맨홀 상태",
+   "type": "select",
+   "section": "하수도",
+   "required": true,
+   "options": [
+    "양호",
+    "불량"
+   ]
+  },
+  {
+   "key": "s_opt",
+   "label": "악취",
+   "type": "select",
+   "options": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "key": "t_req",
+   "label": "확인자",
+   "type": "text",
+   "required": true
+  },
+  {
+   "key": "t_opt",
+   "label": "비고",
+   "type": "text"
+  }
+ ],
+ "cases": [
+  {
+   "name": "빈 입력",
+   "checks": {},
+   "missing": [
+    "b_req",
+    "n_req",
+    "s_req",
+    "t_req"
+   ]
+  },
+  {
+   "name": "필수만 정상",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "확인"
+   },
+   "missing": []
+  },
+  {
+   "name": "bool false도 값",
+   "checks": {
+    "b_req": false,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "확인"
+   },
+   "missing": []
+  },
+  {
+   "name": "타입 오류(문자열 true·숫자 문자열·숫자 선택·숫자 글)",
+   "checks": {
+    "b_req": "true",
+    "n_req": "5",
+    "s_req": 1,
+    "t_req": 5
+   },
+   "missing": [
+    "b_req",
+    "n_req",
+    "s_req",
+    "t_req"
+   ]
+  },
+  {
+   "name": "숫자 하한 경계(0, 1.5) 통과",
+   "checks": {
+    "b_req": true,
+    "n_req": 0,
+    "s_req": "양호",
+    "t_req": "확인",
+    "n_min": 1.5
+   },
+   "missing": []
+  },
+  {
+   "name": "숫자 범위 밖(-0.1, 1.4)",
+   "checks": {
+    "b_req": true,
+    "n_req": -0.1,
+    "s_req": "양호",
+    "t_req": "확인",
+    "n_min": 1.4
+   },
+   "missing": [
+    "n_req",
+    "n_min"
+   ]
+  },
+  {
+   "name": "숫자 상한 초과(10.0001)",
+   "checks": {
+    "b_req": true,
+    "n_req": 10.0001,
+    "s_req": "양호",
+    "t_req": "확인"
+   },
+   "missing": [
+    "n_req"
+   ]
+  },
+  {
+   "name": "상한 10 정확히",
+   "checks": {
+    "b_req": true,
+    "n_req": 10,
+    "s_req": "양호",
+    "t_req": "확인"
+   },
+   "missing": []
+  },
+  {
+   "name": "전부 null",
+   "checks": {
+    "b_req": null,
+    "b_opt": null,
+    "n_req": null,
+    "n_opt": null,
+    "n_min": null,
+    "s_req": null,
+    "s_opt": null,
+    "t_req": null,
+    "t_opt": null
+   },
+   "missing": [
+    "b_req",
+    "n_req",
+    "s_req",
+    "t_req"
+   ]
+  },
+  {
+   "name": "전부 빈 문자열",
+   "checks": {
+    "b_req": "",
+    "b_opt": "",
+    "n_req": "",
+    "n_opt": "",
+    "n_min": "",
+    "s_req": "",
+    "s_opt": "",
+    "t_req": "",
+    "t_opt": ""
+   },
+   "missing": [
+    "b_req",
+    "b_opt",
+    "n_req",
+    "n_opt",
+    "n_min",
+    "s_req",
+    "s_opt",
+    "t_req"
+   ]
+  },
+  {
+   "name": "선택지 밖 값·대소문자",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "보통",
+    "t_req": "확인",
+    "s_opt": "a"
+   },
+   "missing": [
+    "s_req",
+    "s_opt"
+   ]
+  },
+  {
+   "name": "글 500자 통과 / 501자 실패",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가",
+    "t_opt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "missing": [
+    "t_opt"
+   ]
+  },
+  {
+   "name": "이모지 500자(코드포인트) 통과 / 501 실패",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "t_opt": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   },
+   "missing": [
+    "t_opt"
+   ]
+  },
+  {
+   "name": "모르는 키는 무시",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "확인",
+    "zzz": 1
+   },
+   "missing": []
+  },
+  {
+   "name": "선택 항목 타입 오류",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "확인",
+    "b_opt": "yes",
+    "n_opt": true,
+    "s_opt": "C"
+   },
+   "missing": [
+    "b_opt",
+    "n_opt",
+    "s_opt"
+   ]
+  },
+  {
+   "name": "선택 숫자 소수·큰 값 통과",
+   "checks": {
+    "b_req": true,
+    "n_req": 5,
+    "s_req": "양호",
+    "t_req": "확인",
+    "n_opt": 3.25,
+    "n_min": 1000000000000.0
+   },
+   "missing": []
+  },
+  {
+   "name": "배열·객체 값은 실패",
+   "checks": {
+    "b_req": [],
+    "n_req": {},
+    "s_req": [
+     "양호"
+    ],
+    "t_req": [
+     "x"
+    ]
+   },
+   "missing": [
+    "b_req",
+    "n_req",
+    "s_req",
+    "t_req"
+   ]
+  }
+ ]
+}

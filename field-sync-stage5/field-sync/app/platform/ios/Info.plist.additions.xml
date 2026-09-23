@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- path: app/platform/ios/Info.plist.additions.xml
+     ios/Runner/Info.plist 의 최상위 <dict> 안에 아래 키들을 추가(이 파일 자체는 빌드에 쓰이지 않음).
+     그 밖의 iOS 설정:
+       · ios/Podfile: platform :ios, '14.0'   (file_picker 13 요구 iOS 14.0 — kakao_map_sdk·flutter_local_notifications는 13)
+       · Xcode Runner › Signing & Capabilities: Push Notifications, Background Modes(Remote notifications)
+       · `flutterfire configure` → GoogleService-Info.plist 추가, Firebase 콘솔에 APNs 인증 키(.p8) 업로드
+       · AppDelegate: platform/ios/AppDelegate.additions.swift 참고
+     위치는 "앱 사용 중"만 요청(백그라운드 위치 키 없음 — 의도적) -->
+<plist version="1.0">
+<dict>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>현장 도착 확인과 가까운 현장 순 정렬에 위치를 사용합니다.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>작업완료 증빙 사진 촬영에 카메라를 사용합니다.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>작업완료 증빙 사진을 앨범에서 고를 때 사용합니다.</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>kakaomap</string>
+    </array>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
+</dict>
+</plist>

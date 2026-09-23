@@ -1,0 +1,795 @@
+# path: api/openapi.yaml
+openapi: 3.1.0
+info:
+  title: FieldSync API
+  version: 0.1.0
+  description: |
+    현장 작업 중복 방지 협업 앱 API (Supabase PostgREST + Edge Functions).
+    - 상태 변경은 전부 RPC(POST /rest/v1/rpc/*). 테이블 직접 UPDATE 불가.
+    - 업무 결과(성공/거절)는 HTTP 200 + RpcResult. 인증·입력 오류만 4xx.
+    - 모든 변경 RPC는 p_op_id(멱등키)를 받으며, 같은 키 재전송 시 최초 결과를 replayed=true로 반환.
+servers:
+  - url: https://{project_ref}.supabase.co
+    variables:
+      project_ref:
+        default: your-project-ref
+security:
+  - bearerAuth: []
+    apiKey: []
+
+tags:
+  - name: work
+    description: 점유·작업 상태 전이
+  - name: admin
+    description: 배포·권한·정책 (관리자 고정)
+  - name: query
+    description: 조회
+  - name: edge
+    description: Edge Functions
+
+paths:
+  /rest/v1/rpc/claim_site:
+    post:
+      tags: [work]
+      summary: 맡기 (pending → en_route)
+      requestBody: { $ref: '#/components/requestBodies/SiteOp' }
+      responses: &rpc
+        '200': { $ref: '#/components/responses/RpcResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /rest/v1/rpc/start_work:
+    post:
+      tags: [work]
+      summary: 작업 시작 (pending/en_route → working)
+      requestBody: { $ref: '#/components/requestBodies/SiteOp' }
+      responses: *rpc
+  /rest/v1/rpc/pause_work:
+    post:
+      tags: [work]
+      summary: 일시중단 (working → paused)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PauseOp' }
+      responses: *rpc
+  /rest/v1/rpc/resume_work:
+    post:
+      tags: [work]
+      summary: 재개 (paused → working)
+      requestBody: { $ref: '#/components/requestBodies/SiteOp' }
+      responses: *rpc
+  /rest/v1/rpc/complete_work:
+    post:
+      tags: [work]
+      summary: 작업완료 (working → done), 필수 체크·증빙 검증
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteOp' }
+      responses: *rpc
+  /rest/v1/rpc/undo_complete:
+    post:
+      tags: [work]
+      summary: 완료 취소 (done → working, 완료자 본인·5분 내)
+      requestBody: { $ref: '#/components/requestBodies/SiteOp' }
+      responses: *rpc
+  /rest/v1/rpc/release_site:
+    post:
+      tags: [work]
+      summary: 반납 (점유 → pending, 점유자 본인)
+      requestBody: { $ref: '#/components/requestBodies/ReasonOp' }
+      responses: *rpc
+  /rest/v1/rpc/force_release:
+    post:
+      tags: [work]
+      summary: 강제 해제 (work.force_release, 팀 범위)
+      requestBody: { $ref: '#/components/requestBodies/ReasonOp' }
+      responses: *rpc
+  /rest/v1/rpc/reopen_site:
+    post:
+      tags: [work]
+      summary: 재오픈 (done → pending, work.reopen)
+      requestBody: { $ref: '#/components/requestBodies/ReasonOp' }
+      responses: *rpc
+  /rest/v1/rpc/save_checks:
+    post:
+      tags: [work]
+      summary: 체크 항목 중간 저장 (점유자)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChecksOp' }
+      responses: *rpc
+  /rest/v1/rpc/snooze_reminder:
+    post:
+      tags: [work]
+      summary: 리마인더 연기 (5~480분)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SnoozeOp' }
+      responses: *rpc
+  /rest/v1/rpc/send_urgent:
+    post:
+      tags: [work]
+      summary: 긴급 요청 발송 (urgent.send) → 전원 푸시 + 배너
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UrgentOp' }
+      responses: *rpc
+  /rest/v1/rpc/resolve_urgent:
+    post:
+      tags: [work]
+      summary: 긴급 요청 해제 (urgent.send)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveUrgentOp' }
+      responses: *rpc
+  /rest/v1/rpc/publish_group:
+    post:
+      tags: [admin]
+      summary: 현장 묶음(동선) 배포/회수 — 관리자 고정
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublishOp' }
+      responses: *rpc
+  /rest/v1/rpc/set_user_role:
+    post:
+      tags: [admin]
+      summary: 등급·팀 변경 — 관리자 고정 (마지막 관리자 강등 불가)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetRoleOp' }
+      responses: *rpc
+  /rest/v1/rpc/set_user_active:
+    post:
+      tags: [admin]
+      summary: 계정 활성/비활성 — 관리자 고정 (LAST_ADMIN, HAS_ACTIVE_CLAIMS 보호)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetActiveOp' }
+      responses: *rpc
+  /rest/v1/rpc/set_role_permission:
+    post:
+      tags: [admin]
+      summary: 등급별 권한 부여/회수 — 관리자 고정 (위임 가능 권한만)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetPermOp' }
+      responses: *rpc
+  /rest/v1/rpc/update_settings:
+    post:
+      tags: [admin]
+      summary: 알림 정책·점유 한도 등 — 관리자 고정
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSettingsOp' }
+      responses: *rpc
+  /rest/v1/rpc/register_device:
+    post:
+      tags: [work]
+      summary: 푸시 토큰 등록 (본인)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterDeviceOp' }
+      responses: *rpc
+  /rest/v1/rpc/get_stats:
+    post:
+      tags: [query]
+      summary: 팀별/개인별 통계 (stats.view_team=자기 팀, 관리자=전체)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatsReq' }
+      responses:
+        '200':
+          description: 통계 행
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StatsRow' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /rest/v1/rpc/claim_push_batch:
+    post:
+      tags: [edge]
+      summary: '내부 전용 — push 함수가 미발송 알림을 선점(SKIP LOCKED + 2분 임대 + attempts+1, 최대 5회). service_role만 실행'
+      security:
+        - apiKey: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                p_limit: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        '200':
+          description: 선점된 알림
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /rest/v1/site_groups:
+    get:
+      tags: [query]
+      summary: 볼 수 있는 동선(묶음) 목록 — RLS로 배포분만(편집 권한자는 미배포 포함)
+      parameters:
+        - { name: published, in: query, schema: { type: string, example: 'is.true' } }
+        - { name: archived, in: query, schema: { type: string, example: 'is.false' } }
+        - { name: order, in: query, schema: { type: string, example: 'work_date.desc' } }
+      responses:
+        '200':
+          description: 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SiteGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /rest/v1/sites:
+    get:
+      tags: [query]
+      summary: 현장 목록 (초기 로딩 / updated_at 델타)
+      parameters:
+        - { name: group_id, in: query, required: true, schema: { type: string, example: 'eq.3f1c…' } }
+        - { name: archived, in: query, schema: { type: string, example: 'is.false' } }
+        - { name: updated_at, in: query, description: 재연결 델타, schema: { type: string, example: 'gt.2026-09-23T00:10:00Z' } }
+        - { name: order, in: query, schema: { type: string, example: 'seq' } }
+        - { name: select, in: query, schema: { type: string, example: '*,occupant:profiles!occupant_id(name,team_id)' } }
+      responses:
+        '200':
+          description: 현장 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Site' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /rest/v1/work_logs:
+    get:
+      tags: [query]
+      summary: '감사 로그 (본인 / 팀=log.view_team / 전체=관리자), 키셋 페이지네이션'
+      parameters:
+        - { name: order, in: query, schema: { type: string, example: 'id.desc' } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500, example: 100 } }
+        - { name: id, in: query, description: 커서, schema: { type: string, example: 'lt.18233' } }
+        - { name: at, in: query, schema: { type: string, example: 'gte.2026-09-23T00:00:00+09:00' } }
+        - { name: site_id, in: query, schema: { type: string } }
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string, example: 'in.(start,complete)' } }
+      responses:
+        '200':
+          description: 로그
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WorkLog' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /functions/v1/geocode:
+    post:
+      tags: [edge]
+      summary: 주소 검색 / CSV 일괄 등록 (카카오 로컬 API, REST 키 서버 은닉)
+      description: import는 호출자 JWT로 삽입 → RLS가 site.create 권한 검사. CSV ≤ 1,000행.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { $ref: '#/components/schemas/GeocodeSearchReq' }
+                - { $ref: '#/components/schemas/GeocodeImportReq' }
+              discriminator: { propertyName: mode }
+      responses:
+        '200':
+          description: 결과
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/GeocodeSearchResp' }
+                  - { $ref: '#/components/schemas/GeocodeImportResp' }
+        '400': { $ref: '#/components/responses/EdgeError' }
+        '401': { $ref: '#/components/responses/EdgeError' }
+        '403': { $ref: '#/components/responses/EdgeError' }
+        '404': { $ref: '#/components/responses/EdgeError' }
+        '413': { $ref: '#/components/responses/EdgeError' }
+        '502': { $ref: '#/components/responses/EdgeError' }
+  /functions/v1/admin-users:
+    post:
+      tags: [edge, admin]
+      summary: 계정 발급·비밀번호 초기화·비활성화 (관리자 고정)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUserReq' }
+      responses:
+        '200':
+          description: 처리 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  user_id: { type: string, format: uuid }
+                  code: { type: string, enum: [LOGIN_ID_TAKEN, NOT_FOUND, LAST_ADMIN, HAS_ACTIVE_CLAIMS, AUTH_BAN_PENDING], description: 'ok=false 사유 또는 ok=true 부가 상태(AUTH_BAN_PENDING: DB 비활성은 적용, Auth 로그인 차단은 재시도 필요)' }
+        '400': { $ref: '#/components/responses/EdgeError' }
+        '401': { $ref: '#/components/responses/EdgeError' }
+        '403': { $ref: '#/components/responses/EdgeError' }
+        '413': { $ref: '#/components/responses/EdgeError' }
+        '502': { $ref: '#/components/responses/EdgeError' }
+  /functions/v1/push:
+    post:
+      tags: [edge]
+      summary: 알림 아웃박스 → FCM HTTP v1 발송 (내부, pg_cron 호출)
+      security:
+        - cronSecret: []
+      responses:
+        '200':
+          description: 발송 요약
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: integer, description: 1대 이상 발송 성공 }
+                  failed: { type: integer, description: 일시 오류 → 2분 후 재시도 }
+                  closed: { type: integer, description: 기기 없음·무효 토큰·요청 오류 → 재시도 안 함 }
+                  removed_tokens: { type: integer }
+        '401': { $ref: '#/components/responses/EdgeError' }
+        '405': { $ref: '#/components/responses/EdgeError' }
+        '500': { $ref: '#/components/responses/EdgeError' }
+        '502': { $ref: '#/components/responses/EdgeError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: apikey
+      description: Supabase publishable key (클라이언트). secret key는 Edge Function 내부 전용.
+    cronSecret:
+      type: apiKey
+      in: header
+      name: x-cron-secret
+
+  requestBodies:
+    SiteOp:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SiteOp' }
+    ReasonOp:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ReasonOp' }
+
+  responses:
+    RpcResult:
+      description: 업무 결과 (성공/거절 모두 200)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RpcResult' }
+    BadRequest:
+      description: 입력 오류 (PostgREST 오류 형식)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PgError' }
+    Unauthorized:
+      description: 인증 필요/만료
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PgError' }
+    Forbidden:
+      description: 권한 없음
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PgError' }
+    EdgeError:
+      description: Edge Function 오류
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/EdgeError' }
+
+  schemas:
+    SiteStatus:
+      type: string
+      enum: [pending, en_route, working, paused, done]
+      description: 대기중 / 진행중 / 작업중 / 일시중단 / 작업완료
+    SessionStatus:
+      type: string
+      enum: [en_route, working, paused, done, released]
+    Role:
+      type: string
+      enum: [admin, leader, worker]
+    DelegablePerm:
+      type: string
+      enum: [site.create, site.edit, work.force_release, work.reopen, urgent.send, log.view_team, stats.view_team, template.edit]
+    PauseReason:
+      type: string
+      enum: [absent, material, no_access, weather, other]
+    ResultCode:
+      type: string
+      enum: [OK, SITE_OCCUPIED, INVALID_TRANSITION, NOT_OWNER, FORBIDDEN, TEAM_MISMATCH, CLAIM_LIMIT, ALREADY_WORKING, CHECKS_INCOMPLETE, PROOF_REQUIRED, UNDO_EXPIRED, NOT_FOUND, NOT_PUBLISHED, DUPLICATE_SITE, LAST_ADMIN, HAS_ACTIVE_CLAIMS, INVALID_INPUT]
+
+    OpBase:
+      type: object
+      required: [p_op_id]
+      properties:
+        p_op_id: { type: string, format: uuid, description: 멱등키(단말 생성 UUID v4) }
+        p_client_at: { type: [string, 'null'], format: date-time, description: 단말 시각(오프라인 기록용) }
+    OpCommon:
+      description: 작업 RPC·send_urgent 공통 (위치는 로그용, 선택)
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          properties:
+            p_lat: { type: [number, 'null'] }
+            p_lng: { type: [number, 'null'] }
+    SiteOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpCommon' }
+        - type: object
+          required: [p_site_id]
+          properties:
+            p_site_id: { type: string, format: uuid }
+    ReasonOp:
+      allOf:
+        - { $ref: '#/components/schemas/SiteOp' }
+        - type: object
+          required: [p_reason]
+          properties:
+            p_reason: { type: string, minLength: 1, maxLength: 500 }
+    PauseOp:
+      allOf:
+        - { $ref: '#/components/schemas/SiteOp' }
+        - type: object
+          required: [p_reason_code]
+          properties:
+            p_reason_code: { $ref: '#/components/schemas/PauseReason' }
+            p_memo: { type: [string, 'null'], maxLength: 500 }
+    ChecksOp:
+      allOf:
+        - { $ref: '#/components/schemas/SiteOp' }
+        - type: object
+          required: [p_checks]
+          properties:
+            p_checks: { $ref: '#/components/schemas/Checks' }
+    CompleteOp:
+      allOf:
+        - { $ref: '#/components/schemas/SiteOp' }
+        - type: object
+          properties:
+            p_checks: { $ref: '#/components/schemas/Checks' }
+            p_note: { type: [string, 'null'], maxLength: 2000 }
+    SnoozeOp:
+      allOf:
+        - { $ref: '#/components/schemas/SiteOp' }
+        - type: object
+          required: [p_minutes]
+          properties:
+            p_minutes: { type: integer, minimum: 5, maximum: 480 }
+    UrgentOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpCommon' }
+        - type: object
+          required: [p_message]
+          properties:
+            p_site_id: { type: [string, 'null'], format: uuid }
+            p_group_id: { type: [string, 'null'], format: uuid }
+            p_message: { type: string, minLength: 1, maxLength: 300 }
+    ResolveUrgentOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          required: [p_urgent_id]
+          properties:
+            p_urgent_id: { type: string, format: uuid }
+    PublishOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          required: [p_group_id, p_published]
+          properties:
+            p_group_id: { type: string, format: uuid }
+            p_published: { type: boolean }
+    SetRoleOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          required: [p_user_id, p_role]
+          properties:
+            p_user_id: { type: string, format: uuid }
+            p_role: { $ref: '#/components/schemas/Role' }
+            p_team_id: { type: [string, 'null'], format: uuid }
+    SetActiveOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          required: [p_user_id, p_active]
+          properties:
+            p_user_id: { type: string, format: uuid }
+            p_active: { type: boolean }
+    SetPermOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          required: [p_role, p_perm, p_granted]
+          properties:
+            p_role: { type: string, enum: [leader, worker] }
+            p_perm: { $ref: '#/components/schemas/DelegablePerm' }
+            p_granted: { type: boolean }
+    UpdateSettingsOp:
+      allOf:
+        - { $ref: '#/components/schemas/OpBase' }
+        - type: object
+          required: [p_settings]
+          properties:
+            p_settings: { $ref: '#/components/schemas/Settings' }
+    RegisterDeviceOp:
+      type: object
+      required: [p_token, p_platform]
+      properties:
+        p_token: { type: string, minLength: 10 }
+        p_platform: { type: string, enum: [ios, android] }
+        p_notif_permission: { type: boolean, default: true }
+    StatsReq:
+      type: object
+      required: [p_from, p_to]
+      description: 기간은 서울 날짜 기준, 최대 366일
+      properties:
+        p_from: { type: string, format: date }
+        p_to: { type: string, format: date }
+        p_by: { type: string, enum: [team, user], default: team }
+
+    Checks:
+      type: object
+      description: 템플릿 item.key → 값 (bool | number | string)
+      additionalProperties:
+        type: [boolean, number, string]
+      example: { w_meter: true, w_leak: 없음, w_read: 1234, s_hole: 양호, s_back: false }
+    Settings:
+      type: object
+      description: 분 단위 정수
+      properties:
+        remind_working_first_min: { type: integer, minimum: 5, maximum: 1440, default: 90 }
+        remind_working_repeat_min: { type: integer, minimum: 5, maximum: 1440, default: 30 }
+        remind_max: { type: integer, minimum: 1, maximum: 20, default: 8 }
+        escalate_at: { type: integer, minimum: 1, maximum: 20, default: 3 }
+        remind_en_route_after_min: { type: integer, minimum: 5, maximum: 1440, default: 45 }
+        remind_paused_after_min: { type: integer, minimum: 5, maximum: 2880, default: 240 }
+        max_claims_per_user: { type: integer, minimum: 1, maximum: 20, default: 3 }
+        arrive_radius_m: { type: integer, minimum: 10, maximum: 500, default: 50 }
+        undo_complete_window_min: { type: integer, minimum: 0, maximum: 60, default: 5 }
+        min_app_version: { type: string, default: '1.0.0' }
+
+    Occupant:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        name: { type: string }
+        team: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/SiteStatus' }
+        since: { type: string, format: date-time }
+    RpcResult:
+      type: object
+      required: [ok, code]
+      properties:
+        ok: { type: boolean }
+        code: { $ref: '#/components/schemas/ResultCode' }
+        site: { oneOf: [{ $ref: '#/components/schemas/Site' }, { type: 'null' }] }
+        session: { oneOf: [{ $ref: '#/components/schemas/WorkSession' }, { type: 'null' }] }
+        occupant: { oneOf: [{ $ref: '#/components/schemas/Occupant' }, { type: 'null' }] }
+        missing: { type: array, items: { type: string }, description: CHECKS_INCOMPLETE/PROOF_REQUIRED 시 누락 키 }
+        replayed: { type: boolean, default: false }
+    Site:
+      type: object
+      required: [id, group_id, bunji, lat, lng, status, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        seq: { type: integer }
+        label: { type: [string, 'null'] }
+        bunji: { type: string, example: 성수동1가 685-12 }
+        jibun: { type: string, example: 서울 성동구 성수동1가 685-12 }
+        road: { type: [string, 'null'], example: 서울 성동구 아차산로 17 }
+        unit: { type: string, example: B동 계량기#2 }
+        note: { type: [string, 'null'] }
+        lat: { type: number }
+        lng: { type: number }
+        status: { $ref: '#/components/schemas/SiteStatus' }
+        session_id: { type: [string, 'null'], format: uuid }
+        occupant_id: { type: [string, 'null'], format: uuid }
+        occupant_name: { type: [string, 'null'], description: 점유자(완료 시 완료자) 이름 — Realtime 페이로드 자급용 }
+        occupant_team: { type: [string, 'null'] }
+        started_at: { type: [string, 'null'], format: date-time, description: 작업 시작 시각 }
+        status_at: { type: [string, 'null'], format: date-time, description: 현재 상태 진입 시각 }
+        urgent: { type: boolean }
+        archived: { type: boolean }
+        updated_at: { type: string, format: date-time }
+    SiteGroup:
+      type: object
+      required: [id, name, published]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        work_date: { type: [string, 'null'], format: date }
+        team_id: { type: [string, 'null'], format: uuid, description: null = 전체 팀 }
+        template_id: { type: [string, 'null'], format: uuid }
+        kakao_folder_url: { type: [string, 'null'], format: uri, description: 카카오맵 즐겨찾기 폴더 공유 링크(참고 첨부) }
+        published: { type: boolean }
+        archived: { type: boolean }
+    WorkSession:
+      type: object
+      required: [id, site_id, user_id, status]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        team_id: { type: [string, 'null'], format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        claimed_at: { type: [string, 'null'], format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        paused_at: { type: [string, 'null'], format: date-time }
+        pause_reason: { type: [string, 'null'] }
+        paused_total_sec: { type: integer }
+        completed_at: { type: [string, 'null'], format: date-time }
+        released_at: { type: [string, 'null'], format: date-time }
+        checks: { $ref: '#/components/schemas/Checks' }
+        note: { type: [string, 'null'] }
+        next_remind_at: { type: [string, 'null'], format: date-time }
+        remind_count: { type: integer }
+    WorkLog:
+      type: object
+      required: [id, at, action]
+      properties:
+        id: { type: integer, format: int64 }
+        at: { type: string, format: date-time, description: 서버 시각(기준) }
+        actor_id: { type: [string, 'null'], format: uuid }
+        site_id: { type: [string, 'null'], format: uuid }
+        session_id: { type: [string, 'null'], format: uuid }
+        group_id: { type: [string, 'null'], format: uuid }
+        action:
+          type: string
+          enum: [claim, start, pause, resume, complete, undo_complete, release, force_release, reopen, save_checks, snooze, attach, remind, escalate, urgent, urgent_resolve, publish, unpublish, site_create, site_update, site_archive, role_change, perm_change, settings_change]
+        ok: { type: boolean, description: false = 거절된 시도(meta.result.code에 사유) }
+        team_id: { type: [string, 'null'], format: uuid, description: 행위자 팀 스냅샷 }
+        from_status: { type: [string, 'null'] }
+        to_status: { type: [string, 'null'] }
+        meta: { type: object }
+        client_at: { type: [string, 'null'], format: date-time }
+    StatsRow:
+      type: object
+      properties:
+        key: { type: string, format: uuid }
+        name: { type: string }
+        claimed: { type: integer }
+        completed: { type: integer }
+        released: { type: integer }
+        rejected_duplicates: { type: integer, description: 차단된 중복 시도 }
+        completion_rate: { type: number, minimum: 0, maximum: 1 }
+        avg_work_min: { type: [number, 'null'] }
+        p50_work_min: { type: [number, 'null'] }
+        long_running: { type: integer, description: 현재 remind_max 도달 세션 }
+
+    GeocodeSearchReq:
+      type: object
+      required: [mode, query]
+      properties:
+        mode: { type: string, const: search }
+        query: { type: string, minLength: 2, maxLength: 100 }
+    GeocodeCandidate:
+      type: object
+      properties:
+        bunji: { type: string }
+        jibun: { type: string }
+        road: { type: [string, 'null'] }
+        lat: { type: number }
+        lng: { type: number }
+        b_code: { type: string }
+        jibun_key: { type: string }
+    GeocodeSearchResp:
+      type: object
+      properties:
+        candidates:
+          type: array
+          maxItems: 10
+          items: { $ref: '#/components/schemas/GeocodeCandidate' }
+    GeocodeImportReq:
+      type: object
+      required: [mode, group_id, csv]
+      properties:
+        mode: { type: string, const: import }
+        group_id: { type: string, format: uuid }
+        csv: { type: string, description: 'UTF-8 CSV(≤1,000행). 헤더 label/address/unit/memo 또는 구분·주소·세부·메모. address 필수' }
+    GeocodeImportResp:
+      type: object
+      properties:
+        inserted: { type: integer }
+        duplicates:
+          type: array
+          items:
+            type: object
+            properties: { row: { type: integer }, reason: { type: string } }
+        failed:
+          type: array
+          items:
+            type: object
+            properties: { row: { type: integer }, reason: { type: string } }
+    AdminUserReq:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [create, reset_password, deactivate, activate] }
+        user_id: { type: string, format: uuid }
+        login_id: { type: string, pattern: '^[a-z0-9_.-]{3,32}$' }
+        password: { type: string, minLength: 8, description: 8자 이상·72바이트 이하 }
+        name: { type: string, minLength: 1, maxLength: 50 }
+        role: { $ref: '#/components/schemas/Role', default: worker }
+        team_id: { type: [string, 'null'], format: uuid }
+        lang: { type: string, enum: [ko, en, vi], default: ko }
+    EdgeError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, examples: [UNAUTHORIZED, FORBIDDEN, INVALID_INPUT, INVALID_CSV, NOT_FOUND, TOO_LARGE, CONFIG, KAKAO_AUTH, KAKAO_UPSTREAM, FCM_AUTH, AUTH_UPSTREAM, DB_ERROR, INTERNAL] }
+        message: { type: string, description: 사용자 표시용 한국어 메시지 }
+    Notification:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: string, format: uuid }
+        kind: { type: string, enum: [remind, escalate, urgent, force_release, publish, reopen] }
+        title: { type: string }
+        body: { type: string, description: 수신자 언어로 생성 }
+        data: { type: object }
+        collapse_key: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        sent_at: { type: [string, 'null'], format: date-time }
+        read_at: { type: [string, 'null'], format: date-time }
+        attempts: { type: integer }
+        locked_at: { type: [string, 'null'], format: date-time }
+        last_error: { type: [string, 'null'] }
+    PgError:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: [string, 'null'] }
+        hint: { type: [string, 'null'] }

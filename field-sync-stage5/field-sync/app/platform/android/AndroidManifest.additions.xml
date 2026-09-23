@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- path: app/platform/android/AndroidManifest.additions.xml
+     `flutter create --platforms android,ios .` 후 android/app/src/main/AndroidManifest.xml 에 병합(이 파일 자체는 빌드에 쓰이지 않음).
+     근거: flutter_local_notifications README(예약 알림 수신기·부팅 후 재예약), kakao_map_sdk README(인터넷·위치 권한),
+           FCM 기본 채널(서버 push 함수의 channel_id 'default'/'urgent'와 앱 채널 id 일치).
+     의도적으로 없는 권한: 백그라운드 위치(ACCESS_BACKGROUND_LOCATION), 정확 알람(SCHEDULE_EXACT_ALARM) — 앱은 inexact 예약만 사용 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ① <manifest> 바로 아래 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />       <!-- Android 13+ 알림 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />   <!-- 재부팅 후 리마인더 재예약 -->
+
+    <!-- ② 카카오맵 앱 길찾기 링크(kakaomap://) 패키지 가시성 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kakaomap" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+    <application>
+        <!-- ③ <application> 안 (기존 activity 등은 그대로 두고 아래만 추가) -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
+        <!-- 앱이 백그라운드일 때 FCM 알림이 들어갈 채널(앱이 'default' 채널을 생성) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="default" />
+    </application>
+</manifest>
